@@ -79,7 +79,7 @@ int fill_tree( std::map<int, Long64_t>& map_rawtdc,
       rawtdc[ich] = map_rawtdc[ch];
       rawtot[ich] = map_rawtot[ch];
       tdc[ich] = hbfn * 524288.0 + rawtdc[ich] / 1024.;       // 1 hbf = 0.524288 msec, unit of the parameter "tdc" is nsec
-      tot[ich] = rawtdc[ich] / 1024.;                         // 1 LSB = 1 ns / 1024 ~ 0.9766 ps
+      tot[ich] = rawttot[ich] / 1024.;                         // 1 LSB = 1 ns / 1024 ~ 0.9766 ps
     }else{
       rawtdc[ich] = -1000;
       tdc[ich]    = -1000;
