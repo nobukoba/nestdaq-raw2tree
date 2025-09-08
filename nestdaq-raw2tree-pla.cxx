@@ -90,6 +90,8 @@ int fill_tree( std::map<int, Long64_t>& map_rawtdc,
   tr->Fill();
   map_rawtdc.clear();
   map_rawtot.clear();
+  hbfn = -1;
+  rawhbfn = -1;
   return 0;
 }
 
@@ -173,7 +175,6 @@ int main(int argc, char* argv[]){
     read_tf(ifs, max_num_read_tf, sorted_time_frame_data);
     char* ptr = sorted_time_frame_data.begin()->second.data();
     char* end = sorted_time_frame_data.begin()->second.data() + sorted_time_frame_data.begin()->second.size();
-    int32_t iSubTimeFrame = 0;
     while (ptr < end) {
       uint64_t magic = *reinterpret_cast<const uint64_t*>(ptr);
       switch (magic) {
@@ -194,11 +195,10 @@ int main(int argc, char* argv[]){
 	//std::cout << "TimeFrameId: " << std::dec << tfbHeader.timeFrameId << std::hex << " 0x" << tfbHeader.timeFrameId << std::endl;
 	break;}
       case SubTimeFrame::MAGIC: {
-	if (iSubTimeFrame > 0) {
-	  fill_tree(map_rawtdc, map_rawtot, selectedChs,
-		    hbfn0, rawhbfn, hbfn, rawtdc, rawtot, tdc, tot, tr);
-	}
-	iSubTimeFrame++;
+	rawhbfn = -1;
+	hbfn = -1;
+	map_rawtdc.clear();
+	map_rawtot.clear();
 	SubTimeFrame::Header stfHeader = *reinterpret_cast<const SubTimeFrame::Header*>(ptr);
 	ptr += sizeof(SubTimeFrame::Header);
 	unsigned int nword = (stfHeader.length - sizeof(stfHeader)) / 8;
@@ -225,6 +225,8 @@ int main(int argc, char* argv[]){
 	    }
 	  }
 	}
+	fill_tree(map_rawtdc, map_rawtot, selectedChs,
+		  hbfn0, rawhbfn, hbfn, rawtdc, rawtot, tdc, tot, tr);
 	break;}
       case FileSinkTrailer::MAGIC: {
 	ptr += sizeof(FileSinkTrailer::Trailer);
@@ -239,10 +241,6 @@ int main(int argc, char* argv[]){
 	ptr += length - sizeof(magic);
 	break;}
       }
-    }
-    if (iSubTimeFrame > 0) {
-      fill_tree(map_rawtdc, map_rawtot, selectedChs,
-		hbfn0, rawhbfn, hbfn, rawtdc, rawtot, tdc, tot, tr);
     }
   }
   tr->Write();
