@@ -25,7 +25,7 @@ int read_tf (std::ifstream &ifs, uint64_t max_num_read_tf,
   while(file_read_flag == 1){
     TimeFrame::Header tfbHeader;
     ifs.read((char*)&tfbHeader, sizeof(tfbHeader));
-    if (ifs.eof()) { break; }
+    if (ifs.eof() || (ifs.tellg() == -1)) { break; }
     switch (tfbHeader.magic) {
     case TimeFrame::MAGIC: {
       if (tfbHeader.timeFrameId != currTimeFrameId) {
@@ -169,7 +169,8 @@ int main(int argc, char* argv[]){
 	      if ( (rawtdc != rawtdcPrev)
 		   || (idata.hbframe != hbfnPrev) ) {
 	        rawhbfn = idata.hbframe;
-	        hbfn = idata.hbframe + hbfnCarryFlag * 0x1000000 - hbfn0; // hbfn0: first heart beat frame number 
+	        //hbfn = idata.hbframe + hbfnCarryFlag * 0x1000000 - hbfn0; // hbfn0: first heart beat frame number 
+	        hbfn = idata.hbframe - hbfn0; // hbfn0: first heart beat frame number 
 	        tdc = hbfn * 524288.0 + rawtdc / 1024.;                  // 1 hbf = 0.524288 msec, unit of the parameter "tdc" is nsec
 	        tr->Fill();
 	        hit_counter_no_double++;

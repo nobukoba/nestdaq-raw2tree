@@ -25,7 +25,7 @@ int read_tf (std::ifstream &ifs, uint64_t max_num_read_tf,
   while(file_read_flag == 1){
     TimeFrame::Header tfbHeader;
     ifs.read((char*)&tfbHeader, sizeof(tfbHeader));
-    if (ifs.eof()) { break; }
+    if (ifs.eof() || (ifs.tellg() == -1)) { break; }
     switch (tfbHeader.magic) {
     case TimeFrame::MAGIC: {
       if (tfbHeader.timeFrameId != currTimeFrameId) {
@@ -207,7 +207,8 @@ int main(int argc, char* argv[]){
 	  ptr += sizeof(AmQStrTdc::Data::Bits);
 	  if (idata.head == AmQStrTdc::Data::Heartbeat) {
 	    rawhbfn = idata.hbframe;
-	    hbfn = idata.hbframe + hbfnCarryFlag * 0x1000000 - hbfn0; // hbfn0: first heart beat frame number 
+	    //hbfn = idata.hbframe + hbfnCarryFlag * 0x1000000 - hbfn0; // hbfn0: first heart beat frame number 
+	    hbfn = idata.hbframe - hbfn0; // hbfn0: first heart beat frame number 
 	    //std::cout << "FemId: 0x" << std::hex << std::setw(8) << std::setfill('0') << stfHeader.femId << std::setfill(' ') << std::dec;
 	    //std::cout << ", hbfn: " << hbfn
 	    //	      << ", rawhbfn: " << rawhbfn
