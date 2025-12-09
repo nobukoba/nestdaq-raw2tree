@@ -7,6 +7,7 @@
 #include <vector>
 #include <array>
 #include <map>
+#include <unordered_map>
 #include <chrono>
 
 #include "FileSinkHeader.h"
@@ -98,15 +99,16 @@ int main(int argc, char* argv[]){
   TFile * of = TFile::Open(rootfile.c_str(),"RECREATE");
   std::cout << "ROOT file: "<< rootfile << std::endl;
   TTree *tr = new TTree("tr","tr");
-  Long64_t rawtdc, rawtot, rawhbfn, hbfn;
-  Double_t tdc;
-  std::map<int, Long64_t> map_rawtdc;
-  std::map<int, Long64_t> map_rawtot;
+  Long64_t rawhbfn, rawtdc, rawtot,  hbfn;
+  Double_t tdc, tot;
+  std::map<uint64_t, std::unordered_multimap<uint64_t, Long64_t> > map_rawtdc;
+  std::map<uint64_t, std::unordered_multimap<uint64_t, Long64_t> > map_rawtot;
+  tr->Branch("rawhbfn", &rawhbfn, "rawhbfn/L");
   tr->Branch("rawtdc",  &rawtdc,  "rawtdc/L");
   tr->Branch("rawtot",  &rawtot,  "rawtot/L");
-  tr->Branch("rawhbfn", &rawhbfn, "rawhbfn/L");
   tr->Branch("hbfn",    &hbfn,    "hbfn/L");
   tr->Branch("tdc",     &tdc,     "tdc/D");
+  tr->Branch("tot",     &tot,     "tot/D");
   
   FileSinkHeader::Header fileHeader;
   ifs.read((char*)&fileHeader,sizeof(fileHeader));
@@ -123,13 +125,12 @@ int main(int argc, char* argv[]){
   
   uint64_t selectedFemId = 0xc0a802a9; // IP 192.168.2.169 was selected
   uint64_t selectedCh    = 33;         // IP 192.168.2.169, ch33 was selected.
-  uint64_t currentFemId  = 0xffffffff;
-  uint64_t currentCh     = 0xffff;
   
   int64_t  hbfn0                  = -1;
-  int64_t  hbfnPrev               = -1;
+  int64_t  rawhbfnPrev            = -1;
   int64_t  rawtdcPrev             = -1;
-  uint64_t hbfnCarryFlag          = 0;
+  //uint64_t hbfnCarryFlag          = 0;
+  uint64_t hit_counter_all        = 0;
   uint64_t hit_counter            = 0;
   uint64_t hit_counter_no_double  = 0;
   //uint32_t currTimeFrameId = 0x1000000;
@@ -153,6 +154,14 @@ int main(int argc, char* argv[]){
 	//std::cout << "TimeFrameId: " << std::dec << tfbHeader.timeFrameId << std::hex << " 0x" << tfbHeader.timeFrameId << std::endl;
 	break;}
       case SubTimeFrame::MAGIC: {
+	rawhbfn = -1;
+	hbfn = -1;
+	for (auto it = map_rawtdc.begin(); it != map_rawtdc.end(); ++it){
+	  it->second.clear();
+	}
+	for (auto it = map_rawtot.begin(); it != map_rawtot.end(); ++it){
+	  it->second.clear();
+	}
 	SubTimeFrame::Header stfHeader = *reinterpret_cast<const SubTimeFrame::Header*>(ptr);
 	ptr += sizeof(SubTimeFrame::Header);
 	unsigned int nword = (stfHeader.length - sizeof(stfHeader)) / 8;
@@ -160,55 +169,76 @@ int main(int argc, char* argv[]){
 	  AmQStrTdc::Data::Bits idata = *reinterpret_cast<const AmQStrTdc::Data::Bits*>(ptr);
 	  ptr += sizeof(AmQStrTdc::Data::Bits);
 	  if (idata.head == AmQStrTdc::Data::Heartbeat) {
-	    if ((stfHeader.femId == selectedFemId)
-	        && (currentFemId == selectedFemId)
-	        && (currentCh == selectedCh)){
-	      if ((hbfnPrev - idata.hbframe) > 0x10000) {
-	        hbfnCarryFlag++;
-	      }
-	      if ( (rawtdc != rawtdcPrev)
-		   || (idata.hbframe != hbfnPrev) ) {
-	        rawhbfn = idata.hbframe;
-	        //hbfn = idata.hbframe + hbfnCarryFlag * 0x1000000 - hbfn0; // hbfn0: first heart beat frame number 
-	        hbfn = idata.hbframe - hbfn0; // hbfn0: first heart beat frame number 
-	        tdc = hbfn * 524288.0 + rawtdc / 1024.;                  // 1 hbf = 0.524288 msec, unit of the parameter "tdc" is nsec
-	        tr->Fill();
-	        hit_counter_no_double++;
-	        //std::cout << "FemId: 0x" << std::hex << std::setw(8) << std::setfill('0') << stfHeader.femId << std::setfill(' ') << std::dec;
-	        //std::cout << ", hbfn: " << hbfn
-	        //	      << ", rawhbfn: " << rawhbfn
-	        //	      << ", rawtdc:  " << rawtdc
-	        //	      << ", rawtot:  " << rawtot
-	        //	      << ", hbfnCarryFlag:  " << hbfnCarryFlag
-	        //	      << ", tdc: " << tdc << std::endl;
-	      }
-	      rawtdcPrev   = rawtdc;
-	      hbfnPrev     = idata.hbframe;
-	      currentFemId = 0xffffffff;
-	      currentCh    = 0xffff;
-	    }
+	    rawhbfn = idata.hbframe;
+	    //hbfn = idata.hbframe + hbfnCarryFlag * 0x1000000 - hbfn0; // hbfn0: first heart beat frame number 
+	    hbfn = idata.hbframe - hbfn0; // hbfn0: first heart beat frame number 
+	    //std::cout << "FemId: 0x" << std::hex << std::setw(8) << std::setfill('0') << stfHeader.femId << std::setfill(' ') << std::dec;
+	    //std::cout << ", hbfn: " << hbfn
+	    //	      << ", rawhbfn: " << rawhbfn
+	    //	      << ", rawtdc:  " << rawtdc
+	    //	      << ", rawtot:  " << rawtot
+	    //	      << ", hbfnCarryFlag:  " << hbfnCarryFlag
+	    //	      << ", tdc: " << tdc << std::endl;
 	  }else if (idata.head == AmQStrTdc::Data::Data){
+	    if (map_rawtdc.count(stfHeader.femId) == 0){
+	      map_rawtdc[stfHeader.femId] = std::unordered_multimap<uint64_t, Long64_t>{};
+	      map_rawtot[stfHeader.femId] = std::unordered_multimap<uint64_t, Long64_t>{};
+	    }
 	    if ( stfHeader.femType == 2 || stfHeader.femType == 5 ) { // HRTDC
-	      if ((stfHeader.femId == selectedFemId)
-		  && (idata.hrch == selectedCh)){
-		  rawtdc = idata.hrtdc;
-		  rawtot = idata.hrtot;
-		  hit_counter++;
+	      if (map_rawtdc[stfHeader.femId].count(idata.hrch) == 0) {
+		map_rawtdc[stfHeader.femId].insert({(uint64_t)idata.hrch, (Long64_t)idata.hrtdc});
+		map_rawtot[stfHeader.femId].insert({(uint64_t)idata.hrch, (Long64_t)idata.hrtot});
 	      }
-	      currentFemId = stfHeader.femId;
-	      currentCh    = idata.hrch;
 	    }else if ( stfHeader.femType == 3 || stfHeader.femType == 6 ) { // LRTDC
-	      currentFemId = stfHeader.femId;
-	      currentCh = idata.ch;
+	      if (map_rawtdc[stfHeader.femId].count(idata.ch) == 0) {
+		map_rawtdc[stfHeader.femId].insert({(uint64_t)idata.ch, (Long64_t)idata.tdc});
+		map_rawtot[stfHeader.femId].insert({(uint64_t)idata.ch, (Long64_t)idata.tot});
+	      }
 	    }
 	  }
 	}
+
+//	for (auto it = map_rawtdc[selectedFemId].begin(); it != map_rawtdc[selectedFemId].end(); ++it){
+//	  std::cout << "it->first: "<< it->first << std::endl;
+//	  std::cout << "it->second: "<< it->second << std::endl;
+//	}
+
+	if ( (map_rawtdc.count(selectedFemId) > 0) &&
+	     (map_rawtdc[selectedFemId].count(selectedCh) > 0) ){
+	  rawtdc = map_rawtdc[selectedFemId].find(selectedCh)->second;
+	  rawtot = map_rawtot[selectedFemId].find(selectedCh)->second;
+	  hit_counter_all += map_rawtdc[selectedFemId].count(selectedCh);
+	  hit_counter++;
+	  if ((rawhbfn != rawhbfnPrev) ||
+	      (rawtdc != rawtdcPrev)) {
+	    tdc = hbfn * 524288.0 + rawtdc / 1024.;       // 1 hbf = 0.524288 msec, unit of the parameter "tdc" is nsec
+	    tot = rawtot / 1024.;                         // 1 LSB = 1 ns / 1024 ~ 0.9766 ps
+	    tr->Fill();
+	    hit_counter_no_double++;
+	    rawhbfnPrev = rawhbfn;
+	    rawtdcPrev  = rawtdc;
+	  }
+	}
+	
 	break;}
       case FileSinkTrailer::MAGIC: {
 	ptr += sizeof(FileSinkTrailer::Trailer);
 	break;}
       case Filter::MAGIC: {
 	ptr += sizeof(Filter::Header);
+	break;}
+      case 0x00454d4954475254: { /* TRGTIME */
+	ptr += sizeof(magic);
+	uint32_t length, hlength;
+	ptr += (sizeof(length) + sizeof(hlength));
+	magic = *reinterpret_cast<const uint64_t*>(ptr);
+	while (true) { 
+	  if (magic == SubTimeFrame::MAGIC) {
+	    break;
+	  }
+	  ptr += sizeof(magic);
+	  magic = *reinterpret_cast<const uint64_t*>(ptr);
+	}
 	break;}
       default: {
 	magic = *reinterpret_cast<const uint64_t*>(ptr);
@@ -223,6 +253,7 @@ int main(int argc, char* argv[]){
   of->Close();
   std::cout << "For IP address: 0x" << std::hex << std::setw(8) << std::setfill('0') << selectedFemId << std::setfill(' ') << std::dec
 	    << ", ch: " << selectedCh << std::endl;
+  std::cout << "Hit count_all: " << hit_counter_all << std::endl;
   std::cout << "Hit count: " << hit_counter << std::endl;
   std::cout << "Hit count (no double count): " << hit_counter_no_double << std::endl;
   return 0;

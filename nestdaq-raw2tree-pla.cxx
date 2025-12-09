@@ -235,6 +235,19 @@ int main(int argc, char* argv[]){
       case Filter::MAGIC: {
 	ptr += sizeof(Filter::Header);
 	break;}
+      case 0x00454d4954475254: { /* TRGTIME */
+	ptr += sizeof(magic);
+	uint32_t length, hlength;
+	ptr += (sizeof(length) + sizeof(hlength));
+	magic = *reinterpret_cast<const uint64_t*>(ptr);
+	while (true) { 
+	  if (magic == SubTimeFrame::MAGIC) {
+	    break;
+	  }
+	  ptr += sizeof(magic);
+	  magic = *reinterpret_cast<const uint64_t*>(ptr);
+	}
+	break;}
       default: {
 	magic = *reinterpret_cast<const uint64_t*>(ptr);
 	ptr += sizeof(uint64_t);
