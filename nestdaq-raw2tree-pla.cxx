@@ -20,7 +20,7 @@
 
 int read_tf (std::ifstream &ifs, uint64_t max_num_read_tf,
 	     std::map<uint32_t, std::vector<char> >& sorted_time_frame_data){
-  uint32_t currTimeFrameId = 0x1000000;
+  static uint32_t currTimeFrameId = 0;
   uint32_t file_read_flag = 1;
   while(file_read_flag == 1){
     TimeFrame::Header tfbHeader;
@@ -34,7 +34,15 @@ int read_tf (std::ifstream &ifs, uint64_t max_num_read_tf,
 	  file_read_flag = 0;
 	  break;
 	}
-	currTimeFrameId = tfbHeader.timeFrameId;
+	if ((tfbHeader.timeFrameId + 0x800000) < currTimeFrameId) {
+	  uint32_t max_out_counter = 0;
+	  while ((tfbHeader.timeFrameId + 0x1000000 * max_out_counter + 0x800000) < currTimeFrameId ) {
+	    max_out_counter++;
+	  }
+	  currTimeFrameId = tfbHeader.timeFrameId + 0x1000000 * max_out_counter;
+	}else{
+	  currTimeFrameId = tfbHeader.timeFrameId;
+	}
 	sorted_time_frame_data[currTimeFrameId] = std::vector<char>(tfbHeader.length);
 	std::memcpy(sorted_time_frame_data[currTimeFrameId].data(), &tfbHeader, sizeof(TimeFrame::Header));
 	ifs.read(sorted_time_frame_data[currTimeFrameId].data() + sizeof(TimeFrame::Header),
@@ -56,15 +64,15 @@ int read_tf (std::ifstream &ifs, uint64_t max_num_read_tf,
   return 0;
 }
 
-int fill_tree( std::map<int, Long64_t>& map_rawtdc,
-	       std::map<int, Long64_t>& map_rawtot,
+int fill_tree( std::map<int, ULong64_t>& map_rawtdc,
+	       std::map<int, ULong64_t>& map_rawtot,
 	       uint64_t* selectedChs,
-	       int64_t& hbfn0, Long64_t& rawhbfn, Long64_t& hbfn,
-	       Long64_t* rawtdc, Long64_t* rawtot,
+	       uint64_t& hbfn0, ULong64_t& rawhbfn, ULong64_t& hbfn,
+	       ULong64_t* rawtdc, ULong64_t* rawtot,
 	       Double_t* tdc, Double_t*tot,
 	       TTree* tr){
-  static Long64_t prev_rawhbfn = 0;
-  static Long64_t prev_rawtdc  = 0;
+  static ULong64_t prev_rawhbfn = 0;
+  static ULong64_t prev_rawtdc  = 0;
   if(map_rawtdc.count(selectedChs[0])==0){ return 0; }
   if ((map_rawtdc[selectedChs[0]] == prev_rawtdc) &&
       (rawhbfn == prev_rawhbfn)) {
@@ -134,18 +142,18 @@ int main(int argc, char* argv[]){
 	    << " MB" << std::endl;
   
   std::string rootfile = argv[2];
-  TFile * of = TFile::Open(rootfile.c_str(),"RECREATE");
+  TFile *of = TFile::Open(rootfile.c_str(),"RECREATE");
   std::cout << "ROOT file: "<< rootfile << std::endl;
   TTree *tr = new TTree("tr","tr");
-  Long64_t rawhbfn, hbfn;
-  Long64_t rawtdc[9], rawtot[9];
+  ULong64_t rawhbfn, hbfn;
+  ULong64_t rawtdc[9], rawtot[9];
   Double_t tdc[9], tot[9];
-  std::map<int, Long64_t> map_rawtdc;
-  std::map<int, Long64_t> map_rawtot;
-  tr->Branch("rawhbfn", &rawhbfn, "rawhbfn/L");
-  tr->Branch("hbfn",    &hbfn,    "hbfn/L");
-  tr->Branch("rawtdc",  rawtdc,   "rawtdc[9]/L");
-  tr->Branch("rawtot",  rawtot,   "rawtot[9]/L");
+  std::map<int, ULong64_t> map_rawtdc;
+  std::map<int, ULong64_t> map_rawtot;
+  tr->Branch("rawhbfn", &rawhbfn, "rawhbfn/l");
+  tr->Branch("hbfn",    &hbfn,    "hbfn/l");
+  tr->Branch("rawtdc",  rawtdc,   "rawtdc[9]/l");
+  tr->Branch("rawtot",  rawtot,   "rawtot[9]/l");
   tr->Branch("tdc",     tdc,      "tdc[9]/D");
   tr->Branch("tot",     tot,      "tot[9]/D");
   
@@ -153,6 +161,7 @@ int main(int argc, char* argv[]){
   ifs.read((char*)&fileHeader,sizeof(fileHeader));
   std::map<uint32_t, std::vector<char> > sorted_time_frame_data;
   uint64_t max_num_read_tf = 2000;
+  
   std::cout << "-----------------------------------" << std::endl;
   std::cout << "Number of time frames for initial sorting: " << max_num_read_tf << std::endl;
   std::cout << "Now initial time frame sorting is starting..." << std::endl;
@@ -163,10 +172,7 @@ int main(int argc, char* argv[]){
   std::cout << "Then, starting analysis..." << std::endl;
   
   uint64_t selectedChs[9] = {33,10,11,12,13,42,43,44,45}; // IP 192.168.2.169, ch33 was selected.
-  
-  int64_t  hbfn0                  = -1;
-  uint64_t hbfnCarryFlag          = 0;
-  uint32_t currTimeFrameId        = 0x1000000;
+  uint64_t hbfn0 = 0;
   
   while( !sorted_time_frame_data.empty() ){
     print_read_ratio(ifs);
@@ -175,28 +181,26 @@ int main(int argc, char* argv[]){
     read_tf(ifs, max_num_read_tf, sorted_time_frame_data);
     char* ptr = sorted_time_frame_data.begin()->second.data();
     char* end = sorted_time_frame_data.begin()->second.data() + sorted_time_frame_data.begin()->second.size();
+    uint64_t max_out_counter_of_TimeFrameId = 0;
     while (ptr < end) {
       uint64_t magic = *reinterpret_cast<const uint64_t*>(ptr);
       switch (magic) {
       case TimeFrame::MAGIC: {
 	TimeFrame::Header tfbHeader = *reinterpret_cast<const TimeFrame::Header*>(ptr);
 	ptr += sizeof(TimeFrame::Header);
-	if (hbfn0 == -1) {
+	if (hbfn0 == 0) {
 	  hbfn0 = tfbHeader.timeFrameId;
 	}
-	if (currTimeFrameId == 0x1000000) {
-	  currTimeFrameId = tfbHeader.timeFrameId;
-	}else if (currTimeFrameId != tfbHeader.timeFrameId) {
-	  if (tfbHeader.timeFrameId < currTimeFrameId) {
-	    hbfnCarryFlag++;
-	  }
-	  currTimeFrameId = tfbHeader.timeFrameId;
+	while ( sorted_time_frame_data.begin()->first !=
+		(tfbHeader.timeFrameId + max_out_counter_of_TimeFrameId * 0x1000000)) {
+	  max_out_counter_of_TimeFrameId++;
 	}
-	//std::cout << "TimeFrameId: " << std::dec << tfbHeader.timeFrameId << std::hex << " 0x" << tfbHeader.timeFrameId << std::endl;
+	//std::cout << "sorted_time_frame_data.begin()->first: "  << sorted_time_frame_data.begin()->first << std::endl;
+	//std::cout << "tfbHeader.timeFrameId: "  << tfbHeader.timeFrameId << std::endl;
 	break;}
       case SubTimeFrame::MAGIC: {
-	rawhbfn = -1;
-	hbfn = -1;
+	rawhbfn = 0;
+	hbfn = 0;
 	map_rawtdc.clear();
 	map_rawtot.clear();
 	SubTimeFrame::Header stfHeader = *reinterpret_cast<const SubTimeFrame::Header*>(ptr);
@@ -207,14 +211,13 @@ int main(int argc, char* argv[]){
 	  ptr += sizeof(AmQStrTdc::Data::Bits);
 	  if (idata.head == AmQStrTdc::Data::Heartbeat) {
 	    rawhbfn = idata.hbframe;
-	    //hbfn = idata.hbframe + hbfnCarryFlag * 0x1000000 - hbfn0; // hbfn0: first heart beat frame number 
-	    hbfn = idata.hbframe - hbfn0; // hbfn0: first heart beat frame number 
+	    hbfn = rawhbfn + max_out_counter_of_TimeFrameId * 0x1000000 - hbfn0; // hbfn0: first heart beat frame number 
 	    //std::cout << "FemId: 0x" << std::hex << std::setw(8) << std::setfill('0') << stfHeader.femId << std::setfill(' ') << std::dec;
 	    //std::cout << ", hbfn: " << hbfn
 	    //	      << ", rawhbfn: " << rawhbfn
 	    //	      << ", rawtdc:  " << rawtdc
 	    //	      << ", rawtot:  " << rawtot
-	    //	      << ", hbfnCarryFlag:  " << hbfnCarryFlag
+	    //	      << ", max_out_counter_of_TimeFrameId:  " << max_out_counter_of_TimeFrameId
 	    //	      << ", tdc: " << tdc << std::endl;
 	  }else if (idata.head == AmQStrTdc::Data::Data){
 	    if ( stfHeader.femType == 2 || stfHeader.femType == 5 ) { // HRTDC
