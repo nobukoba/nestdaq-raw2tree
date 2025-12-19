@@ -111,10 +111,10 @@ int main(int argc, char* argv[]){
   Double_t tdc, tot;
   std::map<uint64_t, std::unordered_multimap<uint64_t, ULong64_t> > map_rawtdc;
   std::map<uint64_t, std::unordered_multimap<uint64_t, ULong64_t> > map_rawtot;
-  tr->Branch("rawhbfn", &rawhbfn, "rawhbfn/L");
-  tr->Branch("rawtdc",  &rawtdc,  "rawtdc/L");
-  tr->Branch("rawtot",  &rawtot,  "rawtot/L");
-  tr->Branch("hbfn",    &hbfn,    "hbfn/L");
+  tr->Branch("rawhbfn", &rawhbfn, "rawhbfn/l");
+  tr->Branch("rawtdc",  &rawtdc,  "rawtdc/l");
+  tr->Branch("rawtot",  &rawtot,  "rawtot/l");
+  tr->Branch("hbfn",    &hbfn,    "hbfn/l");
   tr->Branch("tdc",     &tdc,     "tdc/D");
   tr->Branch("tot",     &tot,     "tot/D");
   
